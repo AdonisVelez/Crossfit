@@ -48,7 +48,6 @@ class UserManager:
 
             registro_query = "INSERT INTO registro_instructor (usuario, contrasena, instructor_id) VALUES (%s, %s, %s)"
             self.db_manager.execute_query(registro_query, username, password, instructor_id)
-    
 
     def update_user(self, username, user_type, nombre=None, apellido=None, correo=None, edad=None, genero=None, telefono=None):
         if user_type == "cliente":
@@ -104,7 +103,19 @@ class DietManager:
             return f"Nombre: {nombre}\nDescripción: {descripcion}\nForma de la dieta: {forma_dieta}\nCalorías Totales: {calorias_total}"
         else:
             return None
+    
+    def save_diet(self, nombre, descripcion, forma_dieta, calorias_total):
+        query = "INSERT INTO dieta (nombre, descripcion, forma_dieta, calorias_total) VALUES (%s, %s, %s, %s)"
+        self.db_manager.execute_query(query, nombre, descripcion, forma_dieta, calorias_total)
 
+    def update_routine(self, dieta_id, nombre, descripcion, forma_dieta, calorias_total):
+        query = "UPDATE rutina SET nombre = %s, descripcion = %s, forma_dieta = %s, calorias_total = %s WHERE dieta_id = %s"
+        self.db_manager.execute_query(query, nombre, descripcion, forma_dieta, calorias_total, dieta_id)
+        
+    def delete_diet(self, dieta_id):
+        query = "DELETE FROM dieta WHERE dieta_id = %s"
+        self.db_manager.execute_query(query, dieta_id)
+        return True
 
 class RoutineManager:
     def __init__(self, db_manager):
@@ -114,6 +125,10 @@ class RoutineManager:
         query = "SELECT rutina_id, nombre FROM rutina"
         return self.db_manager.execute_query(query)
     
+    def save_routine(self, nombre, descripcion, series, repeticion, tiempo_descanso):
+        query = "INSERT INTO rutina (nombre, descripcion, series, repeticion, tiempo_descanso) VALUES (%s, %s, %s, %s, %s)"
+        self.db_manager.execute_query(query, nombre, descripcion, series, repeticion, tiempo_descanso)
+
     def update_routine(self, rutina_id, nombre, descripcion, series, repeticion, tiempo_descanso):
         query = "UPDATE rutina SET nombre = %s, descripcion = %s, series = %s, repeticion = %s, tiempo_descanso = %s WHERE rutina_id = %s"
         self.db_manager.execute_query(query, nombre, descripcion, series, repeticion, tiempo_descanso, rutina_id)
@@ -127,6 +142,11 @@ class RoutineManager:
         else:
             return ""
 
+    def delete_routine(self, rutina_id):
+        query = "DELETE FROM rutina WHERE rutina_id = %s"
+        self.db_manager.execute_query(query, rutina_id)
+        return True
+    
 class GymApp:
     def __init__(self, root):
         self.root = root
@@ -516,6 +536,23 @@ class GymApp:
             self.show_routine_selection_window(routines)
         else:
             messagebox.showerror("Error", "No se encontraron rutinas")
+    
+    def open_routines_window(self):
+        if self.routine_window is not None:
+            self.routine_window.destroy()
+        
+        routines = self.routine_manager.get_all_routines()
+        self.show_routine_selection_window(routines)
+        
+        
+    def refresh_routines_window(self):
+        routines = self.routine_manager.get_all_routines()
+        self.show_routine_selection_window(routines)
+    
+    def update_routine_list(self):
+        routines = self.routine_manager.get_all_routines()
+        self.routine_window.destroy()
+        self.show_routine_selection_window(routines)
 
     def show_routine_selection_window(self, routines):
         self.routine_window = tk.Toplevel(self.root)
@@ -539,10 +576,27 @@ class GymApp:
 
             btn_modify_routine = ttk.Button(self.routine_window, text="Modificar Rutina", command=self.modify_routine)
             btn_modify_routine.pack(pady=10)
+            
+            btn_delete_routine = ttk.Button(self.routine_window, text="Eliminar Rutina", command=self.delete_routine)
+            btn_delete_routine.pack(pady=10)
 
         btn_back = ttk.Button(self.routine_window, text="Atrás", command=self.routine_window.destroy)
         btn_back.pack(pady=10)
 
+    def delete_routine(self):
+        routine_id = self.selected_routine_id.get()
+        if not routine_id:
+            messagebox.showerror("Error", "Seleccione una rutina primero")
+            return
+
+        result = self.routine_manager.delete_routine(routine_id)
+        if result:
+            messagebox.showinfo("Rutina Eliminada", "La rutina ha sido eliminada exitosamente")
+            self.show_routines()
+        else:
+            messagebox.showerror("Error", "No se pudo eliminar la rutina") 
+        self.update_routine_list()
+        
         
     def add_routine(self):
         routine_name = easygui.enterbox("Ingrese el nombre de la rutina:", "Nueva Rutina")
@@ -556,24 +610,54 @@ class GymApp:
 
         self.routine_manager.save_routine(routine_name, routine_description, routine_series, routine_repeticion, routine_tiempo_descanso)
         messagebox.showinfo("Rutina Agregada", "La rutina ha sido agregada exitosamente")
-        
+        self.update_routine_list()
+
     def modify_routine(self):
         rutina_id = self.selected_routine_id.get()
         if not rutina_id:
             messagebox.showerror("Error", "Seleccione una rutina primero")
             return
 
-        rutina_name = easygui.enterbox("Ingrese el nuevo nombre de la rutina:","Modificar Rutina")
-        rutina_description = easygui.enterbox("Ingrese la nueva descripción de la rutina:","Modificar Rutina")
-        rutina_series = easygui.enterbox("Ingrese el nuevo número de series de la rutina:","Modificar Rutina")
-        rutina_repeticion = easygui.enterbox("Ingrese el nuevo número de repeticiones de la rutina:","Modificar Rutina")
-        rutina_tiempo_descanso = easygui.enterbox("Ingrese el nuevo tiempo de descanso de la rutina:","Modificar Rutina")
+        modify_window = tk.Toplevel(self.root)
+        modify_window.title("Modificar Rutina")
 
+        lbl_routine_name = ttk.Label(modify_window, text="Nuevo Nombre de Rutina:")
+        lbl_routine_name.grid(row=0, column=0, padx=10, pady=10)
+        entry_routine_name = ttk.Entry(modify_window)
+        entry_routine_name.grid(row=0, column=1, padx=10, pady=10)
+
+        lbl_routine_description = ttk.Label(modify_window, text="Nueva Descripción de Rutina:")
+        lbl_routine_description.grid(row=1, column=0, padx=10, pady=10)
+        entry_routine_description = ttk.Entry(modify_window)
+        entry_routine_description.grid(row=1, column=1, padx=10, pady=10)
+
+        lbl_routine_series = ttk.Label(modify_window, text="Nuevo Número de Series de Rutina:")
+        lbl_routine_series.grid(row=2, column=0, padx=10, pady=10)
+        entry_routine_series = ttk.Entry(modify_window)
+        entry_routine_series.grid(row=2, column=1, padx=10, pady=10)
+
+        lbl_routine_repeticion = ttk.Label(modify_window, text="Nuevo Número de Repeticiones de Rutina:")
+        lbl_routine_repeticion.grid(row=3, column=0, padx=10, pady=10)
+        entry_routine_repeticion = ttk.Entry(modify_window)
+        entry_routine_repeticion.grid(row=3, column=1, padx=10, pady=10)
+
+        lbl_routine_tiempo_descanso = ttk.Label(modify_window, text="Nuevo Tiempo de Descanso de Rutina:")
+        lbl_routine_tiempo_descanso.grid(row=4, column=0, padx=10, pady=10)
+        entry_routine_tiempo_descanso = ttk.Entry(modify_window)
+        entry_routine_tiempo_descanso.grid(row=4, column=1, padx=10, pady=10)
+
+        btn_modify = ttk.Button(modify_window, text="Modificar", command=lambda: self.update_routine_fields(rutina_id, entry_routine_name.get(), entry_routine_description.get(), entry_routine_series.get(), entry_routine_repeticion.get(), entry_routine_tiempo_descanso.get(), modify_window))
+        btn_modify.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
+        
+
+    def update_routine_fields(self, rutina_id, rutina_name, rutina_description, rutina_series, rutina_repeticion, rutina_tiempo_descanso, window):
         if not rutina_name:
+            messagebox.showerror("Error", "Ingrese un nombre de rutina válido")
             return
 
         self.routine_manager.update_routine(rutina_id, rutina_name, rutina_description, rutina_series, rutina_repeticion, rutina_tiempo_descanso)
         messagebox.showinfo("Rutina Modificada", "La rutina ha sido modificada exitosamente")
+        window.destroy()
 
 
     def show_selected_routines(self):
@@ -581,8 +665,7 @@ class GymApp:
         routine_details = self.routine_manager.get_routine_details(routine_id)
         self.selected_routine_details.set(routine_details)
         messagebox.showinfo("Detalles de la rutina", routine_details)
-        self.routine_window.destroy()
-
+    
     def suggest_diet(self):
         diets = self.diet_manager.get_all_diets()
 
@@ -618,6 +701,9 @@ class GymApp:
 
             btn_modify_diet = ttk.Button(self.diet_window, text="Modificar Dieta", command=self.modify_diet)
             btn_modify_diet.pack(pady=10)
+            
+            btn_delete_diet = ttk.Button(self.diet_window, text="Eliminar dieta", command=self.delete_diet)
+            btn_delete_diet.pack(pady=10)
 
         btn_back = ttk.Button(self.diet_window, text="Atrás", command=self.diet_window.destroy)
         btn_back.pack(pady=10)
@@ -633,6 +719,8 @@ class GymApp:
 
         self.diet_manager.save_diet(diet_name, diet_description, diet_forma_dieta, diet_calorias_total)
         messagebox.showinfo("Dieta Agregada", "La dieta ha sido agregada exitosamente")
+        self.diet_window.destroy()
+        self.suggest_diet()
 
     def modify_diet(self):
         diet_id = self.selected_diet.get()
@@ -652,7 +740,25 @@ class GymApp:
         self.db_manager.execute_query(query, diet_name, diet_description, diet_forma_dieta, diet_calorias_total, diet_id)
 
         messagebox.showinfo("Dieta Modificada", "La dieta ha sido modificada exitosamente")
+        self.diet_window.destroy()
+        self.suggest_diet()
 
+    def delete_diet(self):
+        dieta_id = self.selected_diet.get()
+        if dieta_id:
+            confirmar = messagebox.askyesno("Confirmar eliminación", "¿Estás seguro de que deseas eliminar esta dieta?")
+            if confirmar:
+                if self.diet_manager.delete_diet(dieta_id):
+                    messagebox.showinfo("Eliminación exitosa", "La dieta ha sido eliminada correctamente.")
+                    self.selected_diet.set("")
+                    self.suggest_diet()
+                else:
+                    messagebox.showerror("Error", "No se pudo eliminar la dieta.")
+        else:
+            messagebox.showerror("Error", "Selecciona una dieta para eliminar.")
+            
+        self.diet_window.destroy()
+        self.suggest_diet()
 
     def show_selected_diet(self):
         diet_id = self.selected_diet.get()
@@ -662,6 +768,7 @@ class GymApp:
         else:
             messagebox.showerror("Error", "No se encontraron detalles de la dieta")
         self.diet_window.destroy()
+        self.suggest_diet()
 
     def show_clients(self):
         clients_window = tk.Toplevel(self.root)
@@ -694,6 +801,7 @@ class GymApp:
             messagebox.showinfo("Detalles del Cliente", f"Nombre: {nombre}\nApellido: {apellido}\nCorreo: {correo}\nEdad: {edad}\nGénero: {genero}\nTeléfono: {telefono}")
         else:
             messagebox.showerror("Error", "No se encontraron detalles del cliente")
+
             
     def show_selected_client_details(self):
         client_name = self.selected_client.get()
@@ -724,4 +832,4 @@ class GymApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = GymApp(root)
-    root.mainloop()
+    root.mainloop() 
